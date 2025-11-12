@@ -1,0 +1,4 @@
+#!/bin/bash
+# Detect script - always return success to run this buildpack
+echo "deno-installer"
+

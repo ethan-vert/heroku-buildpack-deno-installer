@@ -1,0 +1,76 @@
+#!/bin/bash
+# Compile script - installs Deno for yt-dlp
+
+set -e
+
+# BUILD_DIR is where we need to install files so they're included in the slug
+BUILD_DIR=$1
+CACHE_DIR=$2
+ENV_DIR=$3
+
+echo "-----> Installing Deno for yt-dlp JavaScript runtime..."
+echo "-----> BUILD_DIR: ${BUILD_DIR}"
+
+# Install Deno to BUILD_DIR so it gets included in the slug
+DENO_INSTALL_DIR="${BUILD_DIR}/.deno"
+DENO_BIN_TARGET="${BUILD_DIR}/bin/deno"
+
+# Download and install Deno
+curl -fsSL https://deno.land/install.sh | DENO_INSTALL="${DENO_INSTALL_DIR}" sh
+
+# Verify installation
+if [ ! -f "${DENO_INSTALL_DIR}/bin/deno" ]; then
+    echo "-----> ERROR: Deno binary not found after installation"
+    exit 1
+fi
+
+# Make executable
+chmod +x "${DENO_INSTALL_DIR}/bin/deno"
+
+# Verify it works
+DENO_VERSION=$("${DENO_INSTALL_DIR}/bin/deno" --version 2>&1)
+if [ $? -ne 0 ]; then
+    echo "-----> ERROR: Deno verification failed"
+    exit 1
+fi
+
+echo "-----> Deno installed successfully: ${DENO_VERSION}"
+
+# Copy Deno binary to BUILD_DIR/bin so it's included in slug
+mkdir -p ${BUILD_DIR}/bin
+if [ -f "${DENO_INSTALL_DIR}/bin/deno" ]; then
+    cp "${DENO_INSTALL_DIR}/bin/deno" "${DENO_BIN_TARGET}"
+    chmod +x "${DENO_BIN_TARGET}"
+    echo "-----> Copied Deno binary to ${DENO_BIN_TARGET} (will be /app/bin/deno at runtime)"
+    echo "-----> Deno binary size: $(du -h ${DENO_BIN_TARGET} | cut -f1)"
+fi
+
+# Set up runtime PATH via .profile.d
+mkdir -p ${BUILD_DIR}/.profile.d
+cat > ${BUILD_DIR}/.profile.d/deno.sh << 'PROFILE_EOF'
+export DENO_INSTALL="/app/.deno"
+export PATH="/app/bin:${DENO_INSTALL}/bin:${PATH}"
+PROFILE_EOF
+
+echo "-----> Deno runtime PATH configured for slug"
+
+# Verify the installation is accessible and will be in the slug
+if [ -f "${DENO_INSTALL_DIR}/bin/deno" ]; then
+    echo "-----> Verifying Deno will be in slug..."
+    ls -la "${DENO_INSTALL_DIR}/bin/deno"
+    
+    # Ensure the directory structure is preserved by creating a marker
+    # This helps ensure Heroku includes it in the slug
+    touch "${DENO_INSTALL_DIR}/.buildpack-installed"
+    
+    # Also ensure parent directories exist and are accessible
+    chmod -R u+rwX "${DENO_INSTALL_DIR}"
+    
+    echo "-----> Deno binary verified for slug inclusion"
+    echo "-----> Deno path: ${DENO_INSTALL_DIR}/bin/deno"
+    echo "-----> File size: $(du -h ${DENO_INSTALL_DIR}/bin/deno | cut -f1)"
+else
+    echo "-----> ERROR: Deno binary missing after installation"
+    exit 1
+fi
+
